@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# Node / Angular
+node_modules/
+dist/
+.angular/
+
+# Data and backups
+*.sql.gz
+backups/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
