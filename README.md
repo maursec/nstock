@@ -9,9 +9,9 @@ Software Engineering final project, CSU Dominguez Hills.
 | Name | Role |
 |---|---|
 | Jasmynn Vaughan | Project lead and database design |
-| | Backend and API |
-| | Frontend and UI/UX |
-| | ML and IoT integration |
+| Andrew Navarro | Backend and API |
+| Julen Moss | Frontend and UI/UX |
+| Abdullah Hasan | ML and IoT integration |
 
 ## Tech stack
 
@@ -33,7 +33,7 @@ docs/       design decisions, meeting notes, report drafts
 
 ## Getting started
 
-_Setup steps will go here once each part is runnable._
+Setup steps will go here once each part is runnable.
 
 ## How we work
 
