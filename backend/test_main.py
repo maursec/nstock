@@ -341,3 +341,12 @@ def test_missing_product_name():
     )
 
     assert response.status_code == 422
+
+def test_cors():
+    response = client.get(
+        "/products",
+        headers={"Origin": "http://localhost:4200"}
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:4200"
