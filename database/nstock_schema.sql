@@ -1,7 +1,21 @@
 -- =====================================================
--- NStock starter schema (MySQL 8+)
+-- NStock schema (MySQL 8+)
 -- Small-business inventory tool
--- Run this whole file in MySQL Workbench or the mysql CLI.
+-- Run this whole file in MySQL Workbench or the mysql CLI,
+-- then run nstock_seed.sql.
+--
+-- Change log
+--   v1 (Oct 2026)  First version: 7 tables, stock kept as a ledger.
+--   v2 (Nov 2026)  Matched to the FastAPI backend:
+--     - purchase_orders.created_by and stock_movements.user_id are
+--       now optional, since login is out of scope for the prototype
+--     - suppliers get is_active, so deleting one that's in use can be
+--       a "deactivate" instead of a foreign key error
+--     - stock_movements.po_id is set to NULL if its PO is deleted
+--     - indexes on stock_movements for the history and report queries
+--     - new view product_stock: on-hand quantity per product
+--     - sample rows moved out; nstock_seed.sql loads the demo data
+--   Column names did not change, so nstock_seed.sql still runs as is.
 -- =====================================================
 
 DROP DATABASE IF EXISTS nstock;
@@ -10,6 +24,7 @@ USE nstock;
 
 -- -----------------------------------------------------
 -- Who can log in to the app
+-- (Login is future work; kept so records can say who did what later.)
 -- -----------------------------------------------------
 CREATE TABLE users (
     user_id        INT AUTO_INCREMENT PRIMARY KEY,
@@ -30,19 +45,24 @@ CREATE TABLE categories (
 
 -- -----------------------------------------------------
 -- Vendors the business buys from
+-- API: Supplier {name, email, phone}
 -- -----------------------------------------------------
 CREATE TABLE suppliers (
     supplier_id    INT AUTO_INCREMENT PRIMARY KEY,
     name           VARCHAR(150) NOT NULL,
     contact_name   VARCHAR(100),
     email          VARCHAR(255),
-    phone          VARCHAR(30)
+    phone          VARCHAR(30),
+    is_active      BOOLEAN NOT NULL DEFAULT TRUE   -- "delete" by deactivating
 );
 
 -- -----------------------------------------------------
 -- The items being tracked
--- Note: there is NO quantity column here on purpose.
--- On-hand quantity is calculated from stock_movements.
+-- API: Product {sku, name, price, quantity}
+--   price    -> unit_price
+--   quantity -> NOT stored here. It's the sum of stock_movements
+--               (see the product_stock view). Setting a quantity
+--               through the API means inserting an 'adjustment' row.
 -- -----------------------------------------------------
 CREATE TABLE products (
     product_id     INT AUTO_INCREMENT PRIMARY KEY,
@@ -60,12 +80,16 @@ CREATE TABLE products (
 
 -- -----------------------------------------------------
 -- Purchase orders (header) and their lines
--- One PO has many lines -> two tables
+-- One PO has many lines -> two tables.
+-- API: PurchaseOrder {product_id, supplier_id, quantity, status}
+--   The API sends one product per PO for now, so the backend writes
+--   one header row + one line row. Status values must be one of the
+--   ENUM values below.
 -- -----------------------------------------------------
 CREATE TABLE purchase_orders (
     po_id          INT AUTO_INCREMENT PRIMARY KEY,
     supplier_id    INT NOT NULL,
-    created_by     INT NOT NULL,
+    created_by     INT NULL,                       -- optional until login exists
     status         ENUM('draft','ordered','received','cancelled') NOT NULL DEFAULT 'draft',
     order_date     DATE,
     expected_date  DATE,
@@ -86,71 +110,93 @@ CREATE TABLE purchase_order_items (
 -- -----------------------------------------------------
 -- Every change to stock is a row here (a ledger).
 -- Positive quantity = stock in, negative = stock out.
+-- API: StockTransaction {product_id, quantity, transaction_type}
+--   IN  -> movement_type 'receive', quantity stored as positive
+--   OUT -> movement_type 'sale',    quantity stored as negative
+-- The backend blocks an OUT that would take stock below zero.
 -- -----------------------------------------------------
 CREATE TABLE stock_movements (
     movement_id    INT AUTO_INCREMENT PRIMARY KEY,
     product_id     INT NOT NULL,
-    user_id        INT NOT NULL,
+    user_id        INT NULL,                       -- optional until login exists
     movement_type  ENUM('receive','sale','adjustment','return') NOT NULL,
-    quantity       INT NOT NULL,
+    quantity       INT NOT NULL CHECK (quantity <> 0),
     po_id          INT NULL,                       -- filled when type = 'receive'
     note           VARCHAR(255),
     created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (product_id) REFERENCES products(product_id),
     FOREIGN KEY (user_id)    REFERENCES users(user_id),
-    FOREIGN KEY (po_id)      REFERENCES purchase_orders(po_id)
+    FOREIGN KEY (po_id)      REFERENCES purchase_orders(po_id) ON DELETE SET NULL,
+    INDEX idx_movements_product_date (product_id, created_at),
+    INDEX idx_movements_date (created_at)
 );
 
--- =====================================================
--- Sample data so you can test
--- =====================================================
-INSERT INTO users (full_name, email, password_hash, role) VALUES
-  ('Test Owner', 'owner@example.com', 'hash-goes-here', 'owner'),
-  ('Test Staff', 'staff@example.com', 'hash-goes-here', 'staff');
-
-INSERT INTO categories (name) VALUES ('Beverages'), ('Snacks');
-
-INSERT INTO suppliers (name, contact_name, email) VALUES
-  ('Acme Distributing', 'Pat Lee', 'pat@acme.example');
-
-INSERT INTO products (sku, name, category_id, supplier_id, unit_cost, unit_price, reorder_point) VALUES
-  ('BEV-001', 'Sparkling Water 12oz', 1, 1, 0.40, 1.25, 24),
-  ('SNK-001', 'Trail Mix 6oz',        2, 1, 1.10, 3.00, 10);
-
-INSERT INTO purchase_orders (supplier_id, created_by, status, order_date) VALUES
-  (1, 1, 'received', CURDATE());
-
-INSERT INTO purchase_order_items (po_id, product_id, quantity, unit_cost) VALUES
-  (1, 1, 48, 0.40),
-  (1, 2, 20, 1.10);
-
-INSERT INTO stock_movements (product_id, user_id, movement_type, quantity, po_id, note) VALUES
-  (1, 1, 'receive', 48, 1, 'PO #1'),
-  (2, 1, 'receive', 20, 1, 'PO #1'),
-  (1, 2, 'sale',   -30, NULL, NULL),
-  (2, 2, 'sale',   -12, NULL, NULL);
-
--- =====================================================
--- Queries your app will actually need
--- =====================================================
-
--- 1) Current on-hand quantity for every product
-SELECT p.sku, p.name, COALESCE(SUM(m.quantity), 0) AS on_hand
+-- -----------------------------------------------------
+-- On-hand quantity per product.
+-- The backend reads "quantity" from here instead of storing it.
+-- -----------------------------------------------------
+CREATE VIEW product_stock AS
+SELECT p.product_id,
+       COALESCE(SUM(m.quantity), 0) AS on_hand
 FROM products p
 LEFT JOIN stock_movements m ON m.product_id = p.product_id
-GROUP BY p.product_id, p.sku, p.name;
+GROUP BY p.product_id;
 
--- 2) Low-stock report (at or below reorder point)
-SELECT p.sku, p.name, p.reorder_point, COALESCE(SUM(m.quantity), 0) AS on_hand
-FROM products p
-LEFT JOIN stock_movements m ON m.product_id = p.product_id
-WHERE p.is_active = TRUE
-GROUP BY p.product_id, p.sku, p.name, p.reorder_point
-HAVING on_hand <= p.reorder_point;
 
--- 3) Movement history for one product
-SELECT m.created_at, m.movement_type, m.quantity, u.full_name, m.note
-FROM stock_movements m
-JOIN users u ON u.user_id = m.user_id
-WHERE m.product_id = 1
-ORDER BY m.created_at DESC;
+-- =====================================================
+-- Queries the backend needs (copy into the API code)
+-- =====================================================
+
+-- 1) Products with their on-hand quantity
+-- SELECT p.*, s.on_hand
+-- FROM products p JOIN product_stock s ON s.product_id = p.product_id
+-- WHERE p.is_active = TRUE;
+
+-- 2) Low stock (at or below reorder point)
+-- SELECT p.product_id, p.sku, p.name, p.reorder_point, s.on_hand
+-- FROM products p JOIN product_stock s ON s.product_id = p.product_id
+-- WHERE p.is_active = TRUE AND s.on_hand <= p.reorder_point
+-- ORDER BY s.on_hand - p.reorder_point;
+
+-- 3) Slow movers: in stock, but 2 or fewer units sold in the last 30 days
+-- SELECT p.product_id, p.sku, p.name, s.on_hand,
+--        COALESCE(SUM(CASE WHEN m.created_at >= CURDATE() - INTERVAL 30 DAY
+--                          THEN -m.quantity END), 0) AS sold_30d,
+--        MAX(m.created_at) AS last_sale
+-- FROM products p
+-- JOIN product_stock s ON s.product_id = p.product_id
+-- LEFT JOIN stock_movements m
+--        ON m.product_id = p.product_id AND m.movement_type = 'sale'
+-- WHERE p.is_active = TRUE AND s.on_hand > 0
+-- GROUP BY p.product_id, p.sku, p.name, s.on_hand
+-- HAVING sold_30d <= 2
+-- ORDER BY sold_30d, last_sale;
+
+-- 4) Turnover over the last 90 days
+--    turnover = units sold / average on hand
+--    average on hand = (on hand 90 days ago + on hand now) / 2
+-- SELECT p.product_id, p.sku, p.name,
+--        COALESCE(SUM(CASE WHEN m.movement_type = 'sale'
+--                           AND m.created_at >= CURDATE() - INTERVAL 90 DAY
+--                          THEN -m.quantity END), 0) AS sold_90d,
+--        COALESCE(SUM(CASE WHEN m.created_at < CURDATE() - INTERVAL 90 DAY
+--                          THEN m.quantity END), 0) AS on_hand_start,
+--        COALESCE(SUM(m.quantity), 0) AS on_hand_now,
+--        ROUND(
+--          COALESCE(SUM(CASE WHEN m.movement_type = 'sale'
+--                             AND m.created_at >= CURDATE() - INTERVAL 90 DAY
+--                            THEN -m.quantity END), 0)
+--          / NULLIF((COALESCE(SUM(CASE WHEN m.created_at < CURDATE() - INTERVAL 90 DAY
+--                                      THEN m.quantity END), 0)
+--                    + COALESCE(SUM(m.quantity), 0)) / 2, 0)
+--        , 2) AS turnover_90d
+-- FROM products p
+-- LEFT JOIN stock_movements m ON m.product_id = p.product_id
+-- WHERE p.is_active = TRUE
+-- GROUP BY p.product_id, p.sku, p.name
+-- ORDER BY turnover_90d DESC;
+
+-- 5) Movement history for one product
+-- SELECT created_at, movement_type, quantity, note
+-- FROM stock_movements WHERE product_id = 1
+-- ORDER BY created_at DESC;
