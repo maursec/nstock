@@ -1,0 +1,122 @@
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-logo">N</div><div><b>NStock</b><small>INVENTORY PLATFORM</small></div></div>
+    <div class="workspace-label">WORKSPACE</div>
+    <button *ngFor="let p of pages" class="nav-link" [class.active]="activePage===p" (click)="setPage(p)">
+      <span class="nav-icon" [ngSwitch]="p">
+        <span *ngSwitchCase="'Dashboard'">▦</span><span *ngSwitchCase="'Products'">▣</span>
+        <span *ngSwitchCase="'Stock Movements'">⇄</span><span *ngSwitchCase="'Purchase Orders'">▤</span>
+        <span *ngSwitchCase="'Suppliers'">♧</span><span *ngSwitchDefault>♙</span>
+      </span>{{p}}
+      <span *ngIf="p==='Products' && lowStock.length" class="nav-badge">{{lowStock.length}}</span>
+    </button>
+    <div class="sidebar-note"><div class="store-icon">⌂</div><div><b>Neighborhood Market</b><small>Demo workspace</small></div><span class="more">•••</span></div>
+    <div class="user-profile"><div class="avatar avatar-blue">ML</div><div><b>Maria Lopez</b><small>Owner account</small></div><span class="more">⌄</span></div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="crumb">Workspace <span>/</span> <b>{{activePage}}</b></div>
+      <div class="top-actions"><div class="search-global">⌕ <input [(ngModel)]="search" placeholder="Search this page..."></div><button class="icon-button" title="Notifications">♧<i></i></button><div class="avatar avatar-blue">ML</div></div>
+    </header>
+
+    <div class="content">
+      <ng-container [ngSwitch]="activePage">
+        <section *ngSwitchCase="'Dashboard'">
+          <div class="page-title-row"><div><div class="overline">{{demoToday | date:'EEEE, MMMM d, y' | uppercase}}</div><h1>Good afternoon, Maria <span class="wave">✦</span></h1><p class="subtitle">Here’s your store’s inventory overview.</p></div><button class="btn-primary" (click)="showMovementForm=true">＋ Record movement</button></div>
+          <div class="metrics">
+            <article class="metric"><div class="metric-heading">Retail inventory value <span class="metric-icon violet">$</span></div><strong>{{retailValue | currency}}</strong><small class="trend neutral">Based on current selling prices</small></article>
+            <article class="metric"><div class="metric-heading">Units on hand <span class="metric-icon blue">▦</span></div><strong>{{totalUnits | number}}</strong><small class="trend neutral">{{activeProducts.length}} active products</small></article>
+            <article class="metric"><div class="metric-heading">Low-stock products <span class="metric-icon amber">!</span></div><strong>{{lowStock.length}}</strong><small class="trend warn">At or below reorder point</small></article>
+            <article class="metric"><div class="metric-heading">Active suppliers <span class="metric-icon green">♧</span></div><strong>{{suppliers.length}}</strong><small class="trend neutral">Across the demo catalog</small></article>
+          </div>
+          <div class="dashboard-grid">
+            <article class="card inventory-card">
+              <div class="card-head"><div><h2>Inventory by category</h2><p>Active products grouped by category</p></div><button class="link-btn" (click)="setPage('Products')">View inventory ↗</button></div>
+              <div class="category-list">
+                <div class="category-row" *ngFor="let c of categoryCounts"><div class="category-mark" [ngClass]="{'c1':c.name==='Beverages','c2':c.name==='Snacks','c3':c.name==='Household','c4':c.name==='Personal Care'}">{{c.name==='Beverages'?'◉':c.name==='Snacks'?'◇':c.name==='Household'?'⌂':'✚'}}</div><div class="category-main"><div><b>{{c.name}}</b><span>{{c.count}} products</span></div><div class="progress"><i [style.width.%]="c.count/activeProducts.length*100"></i></div></div><strong>{{c.count}}</strong></div>
+              </div>
+              <div class="inventory-summary"><span>Inventory cost value</span><b>{{costValue | currency}}</b></div>
+            </article>
+            <article class="card low-card">
+              <div class="card-head"><div><h2>Needs attention</h2><p>Products at or below reorder point</p></div><span class="count-pill">{{lowStock.length}} items</span></div>
+              <div class="low-list">
+                <div class="low-item" *ngFor="let p of lowStock"><div class="product-initial">{{p.name.charAt(0)}}</div><div class="low-product"><b>{{p.name}}</b><small>{{p.sku}} · {{p.category}}</small></div><div class="stock-count"><b>{{p.stock}}</b><small>of {{p.reorderPoint}} min.</small></div></div>
+              </div>
+              <button class="outline-full" (click)="setPage('Purchase Orders')">Review reorder suggestions <span>→</span></button>
+            </article>
+          </div>
+          <article class="card recent-card" *ngIf="slowMoverSpotlight as slow">
+            <div class="card-head"><div><h2>Slow-moving product spotlight</h2><p>Illustrative seasonal product from nstock_seed_refresh.sql</p></div><button class="link-btn" (click)="setPage('Products')">View product ↗</button></div>
+            <div class="inline-stats"><div><b>{{slow.name}}</b><span>{{slow.sku}} · {{slow.category}}</span></div><div><b>{{slow.stock}}</b><span>Units on hand</span></div><div><b>0</b><span>Units sold in last 30 days (seed refresh)</span></div></div>
+            <p class="subtitle">The refresh adds 24 units received 60 days ago and one sale 41 days ago. The product's category and supplier follow the SQL refresh script.</p>
+          </article>
+          <article class="card recent-card"><div class="card-head"><div><h2>Recent stock activity</h2><p>Latest inventory movements across your store</p></div><button class="link-btn" (click)="setPage('Stock Movements')">View all activity ↗</button></div>
+            <div class="table-scroll"><table><thead><tr><th>PRODUCT</th><th>TYPE</th><th>DATE & TIME</th><th>TEAM MEMBER</th><th class="right">QUANTITY</th></tr></thead><tbody>
+              <tr *ngFor="let m of movements.slice(0,5)"><td><b>{{m.product}}</b></td><td><span class="type-pill" [ngClass]="m.type.toLowerCase()">{{m.type}}</span></td><td>{{m.date}}</td><td>{{m.user}}</td><td class="right" [class.positive]="m.quantity>0" [class.negative]="m.quantity<0">{{m.quantity>0?'+':''}}{{m.quantity}}</td></tr>
+            </tbody></table></div>
+          </article>
+        </section>
+
+        <section *ngSwitchCase="'Products'">
+          <div class="page-title-row"><div><div class="overline">INVENTORY MANAGEMENT</div><h1>Products</h1><p class="subtitle">Manage your catalog, stock levels, and reorder settings.</p></div><button class="btn-primary" (click)="showAddProduct=!showAddProduct">＋ Add product</button></div>
+          <div class="inline-stats"><div><b>{{activeProducts.length}}</b><span>Active products</span></div><div><b>{{lowStock.length}}</b><span>Low stock</span></div><div><b>{{products.length-activeProducts.length}}</b><span>Discontinued</span></div></div>
+          <div class="card" *ngIf="showAddProduct"><div class="card-head"><div><h2>Add new product</h2><p>Enter the product details for your catalog.</p></div><button class="close" (click)="showAddProduct=false">×</button></div>
+            <div class="form-grid"><label>Product name<input [(ngModel)]="newProduct.name" placeholder="Product name"></label><label>SKU<input [(ngModel)]="newProduct.sku" placeholder="e.g. BEV-005"></label><label>Category<select [(ngModel)]="newProduct.category"><option>Beverages</option><option>Snacks</option><option>Household</option><option>Personal Care</option></select></label><label>Preferred supplier<select [(ngModel)]="newProduct.supplier"><option *ngFor="let s of suppliers">{{s.name}}</option></select></label><label>Unit cost ($)<input type="number" min="0" step=".01" [(ngModel)]="newProduct.unitCost"></label><label>Selling price ($)<input type="number" min="0" step=".01" [(ngModel)]="newProduct.unitPrice"></label><label>Starting quantity<input type="number" min="0" [(ngModel)]="newProduct.stock"></label><label>Reorder point<input type="number" min="0" [(ngModel)]="newProduct.reorderPoint"></label></div><div class="form-actions"><button class="btn-light" (click)="showAddProduct=false">Cancel</button><button class="btn-primary" (click)="addProduct()">Save product</button></div>
+          </div>
+          <div class="card">
+            <div class="filter-bar"><div class="search-field">⌕ <input [(ngModel)]="search" placeholder="Search name, SKU, supplier..."></div><select [(ngModel)]="productCategory"><option>All categories</option><option>Beverages</option><option>Snacks</option><option>Household</option><option>Personal Care</option></select><select [(ngModel)]="productStatus"><option>Active</option><option>Discontinued</option><option>All</option></select><span class="results">{{filteredProducts.length}} results</span></div>
+            <div class="table-scroll"><table><thead><tr><th>PRODUCT</th><th>SKU</th><th>CATEGORY</th><th>ON HAND</th><th>REORDER POINT</th><th>UNIT PRICE</th><th>STATUS</th><th></th></tr></thead><tbody>
+              <tr *ngFor="let p of filteredProducts"><td><div class="product-cell"><div class="product-thumb">{{p.name.charAt(0)}}</div><div><b>{{p.name}}</b><small>{{p.supplier}}</small></div></div></td><td class="mono">{{p.sku}}</td><td>{{p.category}}</td><td><b>{{p.stock}}</b><span class="unit-label"> units</span></td><td>{{p.reorderPoint}}</td><td>{{p.unitPrice | currency}}</td><td><span class="status-pill" [ngClass]="!p.active?'inactive':isLow(p)?'low':'healthy'">{{!p.active?'Discontinued':isLow(p)?'Low stock':'In stock'}}</span></td><td><button class="row-action" (click)="openProduct(p)">•••</button></td></tr>
+              <tr *ngIf="!filteredProducts.length"><td colspan="8" class="empty">No products match these filters.</td></tr>
+            </tbody></table></div>
+          </div>
+        </section>
+
+        <section *ngSwitchCase="'Stock Movements'">
+          <div class="page-title-row"><div><div class="overline">INVENTORY LEDGER</div><h1>Stock movements</h1><p class="subtitle">Track every stock-in, stock-out, return, and adjustment.</p></div><button class="btn-primary" (click)="showMovementForm=!showMovementForm">＋ Record movement</button></div>
+          <div class="inline-stats"><div><b>{{movements.length}}</b><span>Recent movements</span></div><div><b>{{saleMovementCount}}</b><span>Sales</span></div><div><b>{{receiveMovementCount}}</b><span>Receipts</span></div></div>
+          <div class="card" *ngIf="showMovementForm"><div class="card-head"><div><h2>Record stock movement</h2><p>Update on-hand inventory.</p></div><button class="close" (click)="showMovementForm=false">×</button></div>
+            <div class="form-grid"><label>Product<select [(ngModel)]="newMovement.productId"><option *ngFor="let p of activeProducts" [ngValue]="p.id">{{p.name}} ({{p.stock}} available)</option></select></label><label>Movement type<select [(ngModel)]="newMovement.type"><option>Sale</option><option>Receive</option><option>Return</option><option>Adjustment out</option></select></label><label>Quantity<input type="number" min="1" [(ngModel)]="newMovement.quantity"></label><label>Note<input [(ngModel)]="newMovement.note" placeholder="Optional note"></label></div><div class="form-actions"><button class="btn-light" (click)="showMovementForm=false">Cancel</button><button class="btn-primary" (click)="recordMovement()">Save movement</button></div>
+          </div>
+          <div class="card"><div class="filter-bar"><div class="search-field">⌕ <input [(ngModel)]="search" placeholder="Search product or team member..."></div><select [(ngModel)]="movementFilter"><option>All movements</option><option>Sale</option><option>Receive</option><option>Adjustment</option><option>Return</option></select><span class="results">{{filteredMovements.length}} entries</span></div>
+            <div class="table-scroll"><table><thead><tr><th>DATE & TIME</th><th>PRODUCT</th><th>MOVEMENT</th><th>TEAM MEMBER</th><th>NOTE</th><th class="right">QUANTITY</th></tr></thead><tbody><tr *ngFor="let m of filteredMovements"><td>{{m.date}}</td><td><b>{{m.product}}</b></td><td><span class="type-pill" [ngClass]="m.type.toLowerCase()">{{m.type}}</span></td><td>{{m.user}}</td><td>{{m.note}}</td><td class="right" [class.positive]="m.quantity>0" [class.negative]="m.quantity<0">{{m.quantity>0?'+':''}}{{m.quantity}}</td></tr></tbody></table></div>
+          </div>
+        </section>
+
+        <section *ngSwitchCase="'Purchase Orders'">
+          <div class="page-title-row"><div><div class="overline">PROCUREMENT</div><h1>Purchase orders</h1><p class="subtitle">Create orders, track deliveries, and keep shelves stocked.</p></div><button class="btn-primary" (click)="showOrderForm=!showOrderForm">＋ New purchase order</button></div>
+          <div class="metrics three"><article class="metric"><div class="metric-heading">Total orders <span class="metric-icon blue">▤</span></div><strong>{{orders.length}}</strong><small class="trend neutral">Across all statuses</small></article><article class="metric"><div class="metric-heading">Awaiting delivery <span class="metric-icon amber">◷</span></div><strong>{{orderedOrderCount}}</strong><small class="trend warn">In transit</small></article><article class="metric"><div class="metric-heading">Draft orders <span class="metric-icon violet">✎</span></div><strong>{{draftOrderCount}}</strong><small class="trend neutral">Not yet submitted</small></article></div>
+          <div class="card" *ngIf="showOrderForm"><div class="card-head"><div><h2>Create purchase order</h2><p>Start a draft order for a supplier.</p></div><button class="close" (click)="showOrderForm=false">×</button></div><div class="form-grid"><label>Supplier<select [(ngModel)]="newOrder.supplier"><option *ngFor="let s of suppliers">{{s.name}}</option></select></label><label>Product<select [(ngModel)]="newOrder.productId"><option *ngFor="let p of activeProducts" [ngValue]="p.id">{{p.name}}</option></select></label><label>Quantity<input type="number" min="1" [(ngModel)]="newOrder.quantity"></label><label>Estimated cost<input [value]="(selectedOrderProduct.unitCost*newOrder.quantity) | currency" disabled></label></div><div class="form-actions"><button class="btn-light" (click)="showOrderForm=false">Cancel</button><button class="btn-primary" (click)="createOrder()">Create draft</button></div></div>
+          <div class="card"><div class="card-head"><div><h2>All purchase orders</h2><p>Order history and delivery status</p></div><select class="compact-select" [(ngModel)]="poFilter"><option>All statuses</option><option>Draft</option><option>Ordered</option><option>Received</option><option>Cancelled</option></select></div>
+            <div class="table-scroll"><table><thead><tr><th>ORDER</th><th>SUPPLIER</th><th>ORDER DATE</th><th>EXPECTED</th><th>ITEMS</th><th>TOTAL COST</th><th>STATUS</th><th></th></tr></thead><tbody><tr *ngFor="let o of filteredOrders"><td><b class="mono">PO-{{o.id.toString().padStart(4,'0')}}</b></td><td>{{o.supplier}}</td><td>{{o.orderDate}}</td><td>{{o.expectedDate}}</td><td>{{o.lines}}</td><td>{{o.total | currency}}</td><td><span class="status-pill" [ngClass]="o.status.toLowerCase()">{{o.status}}</span></td><td><button *ngIf="o.status==='Ordered'" class="mini-btn" (click)="receiveOrder(o)">Mark received</button></td></tr></tbody></table></div>
+          </div>
+          <div class="card reorder-card"><div class="card-head"><div><h2>Reorder suggestions</h2><p>Based on current stock and owner-defined reorder points.</p></div><span class="count-pill">{{lowStock.length}} products</span></div><div class="suggestions"><div *ngFor="let p of lowStock" class="suggestion"><div><b>{{p.name}}</b><small>{{p.supplier}}</small></div><span>{{p.stock}} / {{p.reorderPoint}} units</span><strong>{{p.reorderPoint*2-p.stock}} to order</strong></div></div></div>
+        </section>
+
+        <section *ngSwitchCase="'Suppliers'">
+          <div class="page-title-row"><div><div class="overline">VENDOR DIRECTORY</div><h1>Suppliers</h1><p class="subtitle">Your supplier contacts and product relationships.</p></div><button class="btn-primary" (click)="showAddSupplier=!showAddSupplier">＋ Add supplier</button></div>
+          <div class="metrics four"><article class="metric"><div class="metric-heading">Total suppliers <span class="metric-icon blue">♧</span></div><strong>{{suppliers.length}}</strong><small class="trend neutral">Active vendor records</small></article><article class="metric"><div class="metric-heading">Categories <span class="metric-icon violet">▦</span></div><strong>4</strong><small class="trend neutral">Product groups</small></article></div>
+          <div class="card" *ngIf="showAddSupplier"><div class="card-head"><div><h2>Add supplier</h2><p>Save a new vendor contact.</p></div><button class="close" (click)="showAddSupplier=false">×</button></div><div class="form-grid"><label>Company name<input [(ngModel)]="newSupplier.name"></label><label>Contact name<input [(ngModel)]="newSupplier.contact"></label><label>Email address<input type="email" [(ngModel)]="newSupplier.email"></label><label>Phone number<input [(ngModel)]="newSupplier.phone"></label></div><div class="form-actions"><button class="btn-light" (click)="showAddSupplier=false">Cancel</button><button class="btn-primary" (click)="addSupplier()">Save supplier</button></div></div>
+          <div class="supplier-grid"><article class="card supplier-card" *ngFor="let s of suppliers"><div class="supplier-top"><div class="supplier-logo">{{s.name.charAt(0)}}</div><span class="status-pill healthy">Active</span></div><h2>{{s.name}}</h2><p class="contact-name">{{s.contact}}</p><div class="supplier-details"><div><span>EMAIL</span><b>{{s.email}}</b></div><div><span>PHONE</span><b>{{s.phone}}</b></div></div><div class="supplier-foot"><span>{{s.products}} products supplied</span><button class="link-btn">View products →</button></div></article></div>
+        </section>
+
+        <section *ngSwitchCase="'Team'">
+          <div class="page-title-row"><div><div class="overline">ACCESS MANAGEMENT</div><h1>Team members</h1><p class="subtitle">People with access to your NStock workspace.</p></div><button class="btn-primary" (click)="notify('Team invitation UI is a design placeholder.')">＋ Invite member</button></div>
+          <div class="metrics three"><article class="metric"><div class="metric-heading">Team members <span class="metric-icon blue">♙</span></div><strong>{{team.length}}</strong><small class="trend neutral">Workspace accounts</small></article><article class="metric"><div class="metric-heading">Owners <span class="metric-icon violet">✦</span></div><strong>1</strong><small class="trend neutral">Full access</small></article><article class="metric"><div class="metric-heading">Staff <span class="metric-icon green">♧</span></div><strong>2</strong><small class="trend neutral">Daily operations</small></article></div>
+          <div class="card"><div class="card-head"><div><h2>Workspace access</h2><p>Manage the people who help run your store.</p></div></div><div class="team-list"><div class="team-row" *ngFor="let member of team"><div class="avatar avatar-blue">{{member.initials}}</div><div class="member-name"><b>{{member.name}}</b><small>{{member.email}}</small></div><span class="role-pill" [class.owner]="member.role==='Owner'">{{member.role}}</span><span class="member-state"><i></i> Active</span><button class="row-action">•••</button></div></div></div>
+          <div class="card role-info"><h2>Role permissions</h2><div class="role-columns"><div><span class="role-pill owner">Owner</span><p>Full access to products, suppliers, purchase orders, team settings, and inventory activity.</p></div><div><span class="role-pill">Staff</span><p>Can record sales, receive inventory, and view product and supplier information.</p></div></div></div>
+        </section>
+      </ng-container>
+      <footer>© 2026 NStock <span>·</span> Inventory management for growing businesses <span class="footer-right">Help center &nbsp; · &nbsp; Privacy</span></footer>
+    </div>
+  </main>
+
+  <div class="toast" *ngIf="toast">✓ &nbsp; {{toast}}</div>
+  <div class="modal-backdrop" *ngIf="selectedProduct" (click)="selectedProduct=null">
+    <div class="modal" (click)="$event.stopPropagation()"><div class="card-head"><div><h2>Edit product</h2><p>Update product information in this UI demo.</p></div><button class="close" (click)="selectedProduct=null">×</button></div>
+      <div class="form-grid"><label>Product name<input [(ngModel)]="selectedProduct.name"></label><label>SKU<input [(ngModel)]="selectedProduct.sku"></label><label>Category<select [(ngModel)]="selectedProduct.category"><option>Beverages</option><option>Snacks</option><option>Household</option><option>Personal Care</option></select></label><label>Supplier<select [(ngModel)]="selectedProduct.supplier"><option *ngFor="let s of suppliers">{{s.name}}</option></select></label><label>On-hand quantity<input type="number" min="0" [(ngModel)]="selectedProduct.stock"></label><label>Reorder point<input type="number" min="0" [(ngModel)]="selectedProduct.reorderPoint"></label><label>Unit cost<input type="number" min="0" step=".01" [(ngModel)]="selectedProduct.unitCost"></label><label>Unit price<input type="number" min="0" step=".01" [(ngModel)]="selectedProduct.unitPrice"></label></div>
+      <div class="form-actions"><button class="btn-light" (click)="selectedProduct=null">Cancel</button><button class="btn-primary" (click)="saveProduct()">Save changes</button></div>
+    </div>
+  </div>
+</div>
