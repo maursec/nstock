@@ -1,8 +1,14 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends 
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from backend.database import get_db_connection
 from uuid import uuid4
+from backend.auth import (
+    verify_password,
+    create_access_token,
+    get_current_user,
+    require_owner
+)
 
 app = FastAPI(title="NStock API")
 
@@ -17,6 +23,53 @@ class Product(BaseModel):
     name: str
     quantity: int
 
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/login")
+def login(data: LoginRequest):
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+
+    try:
+        cursor.execute(
+            """
+            SELECT user_id, full_name, email,
+                   password_hash, role
+            FROM users
+            WHERE email = %s
+            """,
+            (data.email,)
+        )
+
+        user = cursor.fetchone()
+
+        if not user or not verify_password(
+            data.password, user["password_hash"]
+        ):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password"
+            )
+
+        token = create_access_token(
+            user["user_id"], user["role"]
+        )
+
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "user_id": user["user_id"],
+            "full_name": user["full_name"],
+            "role": user["role"]
+        }
+
+    finally:
+        cursor.close()
+        connection.close()
+
 @app.get("/")
 def home():
     return {"message": "Welcome to NStock API"}
@@ -25,7 +78,7 @@ def home():
 def health():
     return {"status": "ok"}
 
-@app.get("/products")
+@app.get("/products", dependencies=[Depends(get_current_user)])
 def get_products():
     connection = get_db_connection()
     cursor = connection.cursor(dictionary=True)
@@ -49,7 +102,7 @@ def get_products():
     finally:
         cursor.close()
         connection.close()
-@app.get("/products/{product_id}")
+@app.get("/products/{product_id}", dependencies=[Depends(get_current_user)])
 def get_product(product_id: int):
     products = get_products()
 
@@ -59,7 +112,7 @@ def get_product(product_id: int):
 
     raise HTTPException(status_code=404, detail="Product not found")
 
-@app.post("/products")
+@app.post("/products", dependencies=[Depends(require_owner)])
 def add_product(product: Product):
     if product.quantity < 0:
         raise HTTPException(
@@ -107,7 +160,7 @@ def add_product(product: Product):
         connection.close()
 
 
-@app.put("/products/{product_id}")
+@app.put("/products/{product_id}", dependencies=[Depends(require_owner)])
 def update_product(product_id: int, updated_product: Product):
     if updated_product.quantity < 0:
         raise HTTPException(
@@ -175,7 +228,7 @@ def update_product(product_id: int, updated_product: Product):
         connection.close()
 
 
-@app.delete("/products/{product_id}")
+@app.delete("/products/{product_id}", dependencies=[Depends(require_owner)])
 def delete_product(product_id: int):
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -213,7 +266,7 @@ class Supplier(BaseModel):
     phone: str
 
 
-@app.get("/suppliers")
+@app.get("/suppliers", dependencies=[Depends(get_current_user)])
 def get_suppliers():
     connection = get_db_connection()
     cursor = connection.cursor(dictionary=True)
@@ -236,7 +289,7 @@ def get_suppliers():
         connection.close()
 
 
-@app.get("/suppliers/{supplier_id}")
+@app.get("/suppliers/{supplier_id}", dependencies=[Depends(get_current_user)])
 def get_supplier(supplier_id: int):
     suppliers = get_suppliers()
 
@@ -251,7 +304,7 @@ def get_supplier(supplier_id: int):
 
 
 
-@app.post("/suppliers")
+@app.post("/suppliers", dependencies=[Depends(require_owner)])
 def add_supplier(supplier: Supplier):
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -291,7 +344,7 @@ def add_supplier(supplier: Supplier):
         "supplier": new_supplier
     }
 
-@app.put("/suppliers/{supplier_id}")
+@app.put("/suppliers/{supplier_id}", dependencies=[Depends(require_owner)])
 def update_supplier(supplier_id: int, updated_supplier: Supplier):
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -342,7 +395,7 @@ def update_supplier(supplier_id: int, updated_supplier: Supplier):
 
 
 
-@app.delete("/suppliers/{supplier_id}")
+@app.delete("/suppliers/{supplier_id}", dependencies=[Depends(require_owner)])
 def delete_supplier(supplier_id: int):
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -381,7 +434,7 @@ class PurchaseOrder(BaseModel):
     quantity: int
 
 
-@app.get("/purchase-orders")
+@app.get("/purchase-orders", dependencies=[Depends(get_current_user)])
 def get_purchase_orders():
     connection = get_db_connection()
     cursor = connection.cursor(dictionary=True)
@@ -407,7 +460,7 @@ def get_purchase_orders():
         connection.close()
 
 
-@app.get("/purchase-orders/{order_id}")
+@app.get("/purchase-orders/{order_id}", dependencies=[Depends(get_current_user)])
 def get_purchase_order(order_id: int):
     connection = get_db_connection()
     cursor = connection.cursor(dictionary=True)
@@ -442,7 +495,7 @@ def get_purchase_order(order_id: int):
         connection.close()
 
 
-@app.post("/purchase-orders")
+@app.post("/purchase-orders", dependencies=[Depends(require_owner)])
 def add_purchase_order(order: PurchaseOrder):
     if order.quantity <= 0:
         raise HTTPException(
@@ -520,7 +573,7 @@ def add_purchase_order(order: PurchaseOrder):
         connection.close()
 
 
-@app.put("/purchase-orders/{order_id}")
+@app.put("/purchase-orders/{order_id}", dependencies=[Depends(require_owner)])
 def update_purchase_order(order_id: int, updated_order: PurchaseOrder):
     if updated_order.quantity <= 0:
         raise HTTPException(
@@ -635,7 +688,7 @@ def update_purchase_order(order_id: int, updated_order: PurchaseOrder):
         connection.close()
 
 
-@app.delete("/purchase-orders/{order_id}")
+@app.delete("/purchase-orders/{order_id}", dependencies=[Depends(require_owner)])
 def delete_purchase_order(order_id: int):
     connection = get_db_connection()
     cursor = connection.cursor(dictionary=True)
@@ -693,9 +746,11 @@ class StockTransaction(BaseModel):
     quantity: int
     transaction_type: str
 
-
 @app.post("/stock-transactions")
-def add_stock_transaction(transaction: StockTransaction):
+def add_stock_transaction(
+    transaction: StockTransaction,
+    user: dict = Depends(get_current_user)
+):
     if transaction.quantity <= 0:
         raise HTTPException(
             status_code=400,
@@ -754,7 +809,7 @@ def add_stock_transaction(transaction: StockTransaction):
             VALUES (%s, %s, %s, %s)
         """, (
             transaction.product_id,
-            1,
+            int(user["sub"]),
             movement_type,
             quantity
         ))
@@ -782,7 +837,7 @@ def add_stock_transaction(transaction: StockTransaction):
         cursor.close()
         connection.close()
 
-@app.get("/stock-transactions")
+@app.get("/stock-transactions", dependencies=[Depends(get_current_user)])
 def get_stock_transactions():
     connection = get_db_connection()
     cursor = connection.cursor(dictionary=True)
