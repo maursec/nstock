@@ -467,3 +467,81 @@ def test_cors():
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://localhost:4200"
+
+def test_get_low_stock():
+    response = client.get("/low-stock")
+
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+    for product in response.json():
+        assert product["on_hand"] <= product["reorder_point"]
+
+
+def test_get_reorder_recommendations():
+    response = client.get("/reorder-recommendations")
+
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+    for product in response.json():
+        assert product["recommended_quantity"] == max(
+            0,
+            product["reorder_point"] - product["on_hand"]
+        )
+def test_negative_reorder_point():
+    response = client.post(
+        "/products",
+        json={
+            "name": "Reorder Test Product",
+            "quantity": 10,
+            "reorder_point": -5
+        }
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Reorder point cannot be negative"
+
+def test_reorder_quantity_calculation():
+    response = client.post(
+        "/products",
+        json={
+            "name": "Low Stock Test Product",
+            "quantity": 5,
+            "reorder_point": 20
+        }
+    )
+
+    assert response.status_code == 200
+    product_id = response.json()["product"]["id"]
+
+    response = client.get("/reorder-recommendations")
+    assert response.status_code == 200
+
+    product = next(
+        p for p in response.json()
+        if p["product_id"] == product_id
+    )
+
+    assert product["recommended_quantity"] == 15
+
+def test_sufficient_stock():
+    response = client.post(
+        "/products",
+        json={
+            "name": "Sufficient Stock Test Product",
+            "quantity": 50,
+            "reorder_point": 20
+        }
+    )
+
+    assert response.status_code == 200
+    product_id = response.json()["product"]["id"]
+
+    response = client.get("/low-stock")
+    assert response.status_code == 200
+
+    assert all(
+        p["product_id"] != product_id
+        for p in response.json()
+    )

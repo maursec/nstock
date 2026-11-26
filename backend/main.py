@@ -16,6 +16,7 @@ app.add_middleware(
 class Product(BaseModel):
     name: str
     quantity: int
+    reorder_point: int = 0
 
 @app.get("/")
 def home():
@@ -61,12 +62,17 @@ def get_product(product_id: int):
 
 @app.post("/products")
 def add_product(product: Product):
-    if product.quantity < 0:
+    if product.quantity < 0:    
         raise HTTPException(
             status_code=400,
             detail="Quantity cannot be negative"
         )
 
+    if product.reorder_point < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Reorder point cannot be negative"
+        )
     connection = get_db_connection()
     cursor = connection.cursor()
 
@@ -74,9 +80,9 @@ def add_product(product: Product):
         sku = str(uuid4())
 
         cursor.execute("""
-            INSERT INTO products (sku, name)
-            VALUES (%s, %s)
-        """, (sku, product.name))
+            INSERT INTO products (sku, name, reorder_point)
+            VALUES (%s, %s, %s)
+        """, (sku, product.name, product.reorder_point))
 
         product_id = cursor.lastrowid
 
@@ -806,3 +812,42 @@ def get_stock_transactions():
     finally:
         cursor.close()
         connection.close()
+
+@app.get("/low-stock")
+def get_low_stock():
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+
+    try:
+        cursor.execute("""
+            SELECT
+                p.product_id,
+                p.sku,
+                p.name,
+                p.reorder_point,
+                s.on_hand
+            FROM products p
+            JOIN product_stock s
+                ON s.product_id = p.product_id
+            WHERE p.is_active = TRUE
+                AND s.on_hand <= p.reorder_point
+            ORDER BY s.on_hand - p.reorder_point
+        """)
+
+        return cursor.fetchall()
+
+    finally:
+        cursor.close()
+        connection.close()
+
+@app.get("/reorder-recommendations")
+def get_reorder_recommendations():
+    products = get_low_stock()
+
+    for product in products:
+        product["recommended_quantity"] = max(
+            0,
+            product["reorder_point"] - product["on_hand"]
+        )
+
+    return products
