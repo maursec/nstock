@@ -1,6 +1,12 @@
-
 from fastapi.testclient import TestClient
 from main import app
+from backend.auth import get_current_user, require_owner
+
+def mock_current_user():
+    return {"sub": "1", "role": "owner"}
+
+app.dependency_overrides[get_current_user] = mock_current_user
+app.dependency_overrides[require_owner] = mock_current_user
 
 client = TestClient(app)
 
